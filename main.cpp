@@ -1,6 +1,10 @@
 #include <iostream>
-#include <boost/mpi.hpp>
 #include <sys/time.h>
+
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wall -Wextra"
+#include <boost/mpi.hpp>
+#pragma GCC diagnostic pop
 
 #define MAX_LEN 4194304
 

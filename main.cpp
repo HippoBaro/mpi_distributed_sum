@@ -66,23 +66,17 @@ struct smarter_reduce {
         auto response = std::vector<int, boost::simd::allocator<int>>(n);
 
         int recv_count;
-        if (comm.rank() == root) {
-            recv_count = log2(comm.size());
-        }
+        if (comm.rank() == root) { recv_count = log2(comm.size()); }
         else {
             recv_count = comm.rank() == comm.size() / 2 ? log2(comm.rank()) : log2(abs(comm.rank() - comm.size() / 2));
         }
 
-        std::cout << comm.rank() << ": recv_count: " << recv_count << std::endl;
         int j = 0;
         for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-            std::cout << comm.rank() << ": receiving from: " << comm.rank() + (j == 0 ? 1 : j + j) << std::endl;
             comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response.data(), n);
-            std::cout << comm.rank() << ": received from: " << comm.rank() + (j == 0 ? 1 : j + j) << std::endl;
             std::transform(response.data(), response.data() + n, in_values, in_values, op);
         }
         if (comm.rank() != root) {
-            std::cout << comm.rank() << ": sending to: " << comm.rank() - (j == 0 ? 1 : j + j) << std::endl;
             comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, in_values, n);
         }
         else {
@@ -113,10 +107,7 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     });
     if (comm.rank() > 0) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
-        //volatile __attribute__((unused)) auto t = accumulator(&reduced.front(), &reduced.back(), 0);
-        auto t = accumulator(&reduced.front(), &reduced.back(), 0);
-        if (comm.rank() == 0)
-            std::cout << t << std::endl;
+        volatile __attribute__((unused)) auto t = accumulator(&reduced.front(), &reduced.back(), 0);
     });
 
     return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());
@@ -138,13 +129,10 @@ auto make_stat(Function &&function) {
 
 template<size_t Size, typename Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    make_stat<50>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
-    //if (comm.rank() > 0) { return; }
-    //std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << "us, "
-    //          << Accumulator::name << ": " << min.second << "us" << std::endl;
-
-    if (comm.rank() == 0)
-        std::cout << std::endl;
+    auto min = make_stat<50>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
+    if (comm.rank() > 0) { return; }
+    std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << "us, "
+              << Accumulator::name << ": " << min.second << "us" << std::endl;
 }
 
 int main(int argc, char *argv[]) {

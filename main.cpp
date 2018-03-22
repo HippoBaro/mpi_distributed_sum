@@ -32,9 +32,9 @@ int main(int argc, char *argv[])
     a = (int*)malloc(MAX_LEN * sizeof(int));
     res = (int*)malloc(MAX_LEN * sizeof(int));
     res2 = (int*)malloc(MAX_LEN * sizeof(int));
-    memset(a, 0 , sizeof(a));
-    memset(res, 0 , sizeof(res));
-    memset(res2, 0 , sizeof(res2));
+    memset(a, 0 , sizeof(*a));
+    memset(res, 0 , sizeof(*res));
+    memset(res2, 0 , sizeof(*res2));
 
     // TODO
     // you can add some variable or some other things as you want if needed
@@ -51,7 +51,7 @@ int main(int argc, char *argv[])
         // MPI_Reduce and then print the usetime, the result will be put in res2[]
         world.barrier();
         begin_time = get_time_us();
-        boost::mpi::reduce(world, a, res2, MPI_SUM, 0);
+        //boost::mpi::reduce(world, a, res2, std::plus<int>(), 0);
         world.barrier();
         end_time = get_time_us();
         use_time2 = end_time - begin_time;
@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
         begin_time = get_time_us();
         // TODO
         // you should delete the next line, and do the reduction using your idea
-        boost::mpi::reduce(world, a, res2, MPI_SUM, 0);
+        //boost::mpi::reduce(world, a, res2, std::plus<>(), 0);
         // TODO
         world.barrier();
         end_time = get_time_us();

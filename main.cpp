@@ -12,7 +12,7 @@
 #pragma GCC diagnostic pop
 
 template<typename Function>
-inline auto time_function(Function &&func) {
+inline std::chrono::microseconds time_function(Function &&func) {
     auto begin_time = std::chrono::high_resolution_clock::now();
     func();
     return std::chrono::duration_cast<std::chrono::microseconds>(

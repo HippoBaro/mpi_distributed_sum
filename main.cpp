@@ -51,14 +51,11 @@ struct dumb_reduce {
             comm.send(root, 0, in_values, n);
         }
         else { //receive and accumulate
-            auto responses = std::vector<std::vector<int, boost::simd::allocator<int>>>(comm.size() - 1);
-            std::generate(responses.begin(), responses.end(),
-                          [n] { return std::vector<int, boost::simd::allocator<int>>(n); });
-
+            auto response = std::vector<int, boost::simd::allocator<int>>(n);
             std::copy_n(in_values, n, out_values);
             for (int j = 0; j < comm.size() - 1; ++j) {
-                comm.recv(boost::mpi::any_source, boost::mpi::any_tag, responses[j].data(), n);
-                std::transform(out_values, out_values + n, responses[j].data(), out_values, op);
+                comm.recv(boost::mpi::any_source, boost::mpi::any_tag, response.data(), n);
+                boost::simd::transform(out_values, out_values + n, response.data(), out_values, op);
             }
         }
     }

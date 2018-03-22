@@ -5,6 +5,9 @@
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #include <boost/mpi.hpp>
+#include <boost/simd.hpp>
+#include <boost/simd/algorithm.hpp>
+#include <boost/simd/memory.hpp>
 #pragma GCC diagnostic pop
 
 #define MAX_LEN 4194304
@@ -24,22 +27,18 @@ int main(int argc, char *argv[])
 
     srand(time(NULL));  // seed for rand() to generate the array randomly
 
-    int *a;     // the array used to do the reduction
-    int *res;   // the array to record the result of YOUR_Reduce
-    int *res2;  // the array to record the result of MPI_Reduce
-
     int count;
     long begin_time, end_time, use_time, use_time2; // use_time for YOUR_Reduce & use_time2 for MPI_Reduce
 
     int i;
 
     // initialize
-    a = (int*)malloc(MAX_LEN * sizeof(int));
-    res = (int*)malloc(MAX_LEN * sizeof(int));
-    res2 = (int*)malloc(MAX_LEN * sizeof(int));
-    memset(a, 0 , sizeof(*a));
-    memset(res, 0 , sizeof(*res));
-    memset(res2, 0 , sizeof(*res2));
+    auto a = std::vector<int, boost::simd::allocator<int>>(MAX_LEN); // the array used to do the reduction
+    auto res = std::vector<int, boost::simd::allocator<int>>(MAX_LEN); // the array to record the result of YOUR_Reduce
+    auto res2 = std::vector<int, boost::simd::allocator<int>>(MAX_LEN); // the array to record the result of MPI_Reduce
+    std::fill(a.begin(), a.end(), 0);
+    std::fill(res.begin(), res.end(), 0);
+    std::fill(res2.begin(), res2.end(), 0);
 
     // TODO
     // you can add some variable or some other things as you want if needed
@@ -56,7 +55,7 @@ int main(int argc, char *argv[])
         // MPI_Reduce and then print the usetime, the result will be put in res2[]
         world.barrier();
         begin_time = get_time_us();
-        //boost::mpi::reduce(world, a, res2, std::plus<int>(), 0);
+        boost::mpi::reduce(world, &a.front(), a.size(), &res2.front(), std::plus<>(), 0);
         world.barrier();
         end_time = get_time_us();
         use_time2 = end_time - begin_time;
@@ -69,7 +68,7 @@ int main(int argc, char *argv[])
         begin_time = get_time_us();
         // TODO
         // you should delete the next line, and do the reduction using your idea
-        //boost::mpi::reduce(world, a, res2, std::plus<>(), 0);
+        boost::mpi::reduce(world, &a.front(), a.size(), &res.front(), std::plus<>(), 0);
         // TODO
         world.barrier();
         end_time = get_time_us();
@@ -81,44 +80,27 @@ int main(int argc, char *argv[])
         // check the result of MPI_Reduce and YOUR_Reduce
         if(world.rank() == 0)
         {
-            int correctness = 1;
-            for(i=0; i<count; i++)
-            {
-                if(res2[i] != res[i])
-                {
-                    correctness = 0;
-                }
-            }
-            if(correctness == 0)
+            auto correctness = boost::simd::equal(res.data(), res.data() + res.size(), res2.data());
+            if(!correctness)
                 printf("WRONG !!!\n");
             else
                 printf("CORRECT !\n");
-        }
 
 
-        if(world.rank() == 0)
-        {
             long sum = 0;
             begin_time = get_time_us();
-            // TODO
-            // calculate the sum of the result array reduced to process 0,
-            // please make it faster with single thread.
-            // TODO
+            sum = boost::simd::reduce(res.data(), res.data() + res.size(), 0);
             end_time = get_time_us();
             use_time = end_time - begin_time;
             printf("sum is %ld, use_time : %ld us [single thread]\n", sum, use_time);
 
             sum = 0;
             begin_time = get_time_us();
-            // TODO
-            // calculate the sum of the result array reduced to process 0,
-            // please make it faster with multiple threads.
-            // TODO
+            sum = boost::simd::reduce(res.data(), res.data() + res.size(), 0);
             end_time = get_time_us();
             use_time = end_time - begin_time;
             printf("sum is %ld, use_time : %ld us [multiple threads]\n\n", sum, use_time);
         }
-
     }
     return 0;
 }

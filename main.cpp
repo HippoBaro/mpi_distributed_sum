@@ -139,13 +139,25 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-/*    reduce_and_accumulate<4>(world, MPI_reduce(), dumb_accumulator());
-    reduce_and_accumulate<4>(world, MPI_reduce(), SIMD_accumulator());
+    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
-    reduce_and_accumulate<64>(world, MPI_reduce(), dumb_accumulator());
-    reduce_and_accumulate<1024>(world, MPI_reduce(), dumb_accumulator());
-    reduce_and_accumulate<16384>(world, MPI_reduce(), dumb_accumulator());
-    reduce_and_accumulate<262144>(world, MPI_reduce(), dumb_accumulator());*/
+    benchmark<64, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<64, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<64, MPI_reduce, SIMD_accumulator>(world);
+
+    benchmark<1024, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<1024, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<1024, MPI_reduce, SIMD_accumulator>(world);
+
+    benchmark<16384, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<16384, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<16384, MPI_reduce, SIMD_accumulator>(world);
+
+    benchmark<262144, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
     benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);

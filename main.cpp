@@ -59,6 +59,27 @@ struct dumb_reduce {
     }
 };
 
+struct smarter_reduce {
+    static constexpr auto name = "smarter_reduce";
+    template<typename T, typename Op>
+    void operator()(const boost::mpi::communicator &comm, T *in_values, int n, T *out_values, Op op, int root) {
+        auto response = std::vector<int, boost::simd::allocator<int>>(n);
+
+        auto recv_count = comm.rank() == comm.size() / 2 ? log2(comm.rank()) : log2(abs(comm.rank() - comm.size() / 2));
+        int j = 0;
+        for (; comm.rank() % 2 && j < recv_count; ++j) {
+            comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response.data(), n);
+            std::transform(response.data(), response.data() + n, in_values, in_values, op);
+        }
+        if (comm.rank() != root) {
+            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, in_values, n);
+        }
+        else {
+            std::copy_n(in_values, n, out_values);
+        }
+    }
+};
+
 template<typename Function>
 inline std::chrono::microseconds time_function(Function &&func) {
     auto begin_time = std::chrono::high_resolution_clock::now();
@@ -68,20 +89,23 @@ inline std::chrono::microseconds time_function(Function &&func) {
 }
 
 template<size_t Size, typename Reducer, typename Accumulator>
-auto reduce_and_accumulate(boost::mpi::communicator const &world, Reducer reducer, Accumulator accumulator) {
+auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer, Accumulator accumulator) {
     auto local = std::vector<int, boost::simd::allocator<int>>(Size);
     auto reduced = std::vector<int, boost::simd::allocator<int>>(Size);
 
     srand(1);  // useful for testing
     std::generate(local.begin(), local.end(), [] { return rand(); });
 
-    world.barrier();
+    comm.barrier();
     auto reduce_time = time_function([&] {
-        reducer(world, &local.front(), static_cast<int>(local.size()), &reduced.front(), std::plus<>(), 0);
+        reducer(comm, &local.front(), static_cast<int>(local.size()), &reduced.front(), std::plus<>(), 0);
     });
-    if (world.rank() > 0) { return std::make_pair(0, 0); }
+    if (comm.rank() > 0) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
-        volatile __attribute__((unused)) auto t = accumulator(&reduced.front(), &reduced.back(), 0);
+        //volatile __attribute__((unused)) auto t = accumulator(&reduced.front(), &reduced.back(), 0);
+        auto t = accumulator(&reduced.front(), &reduced.back(), 0);
+        if (comm.rank() == 0)
+            std::cout << t << std::endl;
     });
 
     return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());
@@ -103,10 +127,11 @@ auto make_stat(Function &&function) {
 
 template<size_t Size, typename Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    auto min = make_stat<50>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
-    if (comm.rank() > 0) { return; }
-    std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << "us, "
-              << Accumulator::name << ": " << min.second << "us" << std::endl;
+    make_stat<50>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
+    //if (comm.rank() > 0) { return; }
+    //std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << "us, "
+    //          << Accumulator::name << ": " << min.second << "us" << std::endl;
+    std::cout << std::endl;
 }
 
 int main(int argc, char *argv[]) {
@@ -122,6 +147,7 @@ int main(int argc, char *argv[]) {
     reduce_and_accumulate<262144>(world, MPI_reduce(), dumb_accumulator());*/
 
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
-    benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
     return 0;
 }

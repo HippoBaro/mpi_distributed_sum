@@ -15,33 +15,52 @@
 
 struct SIMD_accumulator {
     static constexpr auto name = "SIMD_accumulator";
+
     template<typename T>
-    auto operator()(T const* first, T const* last, T init) {
+    auto operator()(T const *first, T const *last, T init) {
         return boost::simd::reduce(first, last, init);
     }
 };
 
-struct STD_accumulator {
-    static constexpr auto name = "STD_accumulator";
+struct dumb_accumulator {
+    static constexpr auto name = "dumb_accumulator";
+
     template<typename T>
-    auto operator()(T const* first, T const* last, T init) {
-        return std::accumulate(first, last, init);
+    auto operator()(T const *first, T const *last, T init) {
+        volatile T res = init;
+        while (first != last) { res += *first++; }
+        return res;
     }
 };
 
 struct MPI_reduce {
     static constexpr auto name = "MPI_reduce";
+
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, const T *in_values, int n, T *out_values, Op op, int root) {
         boost::mpi::reduce(comm, in_values, n, out_values, op, root);
     }
 };
 
-struct YOUR_reduce {
-    static constexpr auto name = "YOUR_reduce";
+struct dumb_reduce {
+    static constexpr auto name = "dumb_reduce";
+
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, const T *in_values, int n, T *out_values, Op op, int root) {
-        boost::mpi::reduce(comm, in_values, n, out_values, op, root);
+        if (comm.rank() > 0) {
+            comm.send(root, 0, in_values, n);
+        }
+        else { //receive and accumulate
+            auto responses = std::vector<std::vector<int, boost::simd::allocator<int>>>(comm.size() - 1);
+            std::generate(responses.begin(), responses.end(),
+                          [n] { return std::vector<int, boost::simd::allocator<int>>(n); });
+
+            std::copy_n(in_values, n, out_values);
+            for (int j = 0; j < comm.size() - 1; ++j) {
+                comm.recv(boost::mpi::any_source, boost::mpi::any_tag, responses[j]);
+                std::transform(out_values, out_values + n, responses[j].data(), out_values, op);
+            }
+        }
     }
 };
 
@@ -68,27 +87,27 @@ void reduce_and_accumulate(boost::mpi::communicator const &world, Reducer reduce
     if (world.rank() > 0) { return; }
 
     std::cout << Size << " int, use_time: " << use_time.count() << "us [" << Reducer::name << "]\n";
-    {
-        int sum = 0;
-        auto use_time2 = time_function([&] { sum = accumulator(&reduced.front(), &reduced.back(), 0); });
-        std::cout << "sum: " << sum << ", use_time: " << use_time2.count() << "us [" << Accumulator::name << "]\n";
-    }
-    std::cout << std::endl;
+    int sum = 0;
+    auto use_time2 = time_function([&] { sum = accumulator(&reduced.front(), &reduced.back(), 0); });
+    std::cout << "sum: " << sum << ", use_time: " << use_time2.count() << "us [" << Accumulator::name << "]\n"
+              << std::endl;
 }
 
 int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-    reduce_and_accumulate<4>(world, MPI_reduce(), STD_accumulator());
+/*    reduce_and_accumulate<4>(world, MPI_reduce(), dumb_accumulator());
     reduce_and_accumulate<4>(world, MPI_reduce(), SIMD_accumulator());
 
-    reduce_and_accumulate<64>(world, MPI_reduce(), STD_accumulator());
-    reduce_and_accumulate<1024>(world, MPI_reduce(), STD_accumulator());
-    reduce_and_accumulate<16384>(world, MPI_reduce(), STD_accumulator());
-    reduce_and_accumulate<262144>(world, MPI_reduce(), STD_accumulator());
+    reduce_and_accumulate<64>(world, MPI_reduce(), dumb_accumulator());
+    reduce_and_accumulate<1024>(world, MPI_reduce(), dumb_accumulator());
+    reduce_and_accumulate<16384>(world, MPI_reduce(), dumb_accumulator());
+    reduce_and_accumulate<262144>(world, MPI_reduce(), dumb_accumulator());*/
 
-    reduce_and_accumulate<4194304>(world, MPI_reduce(), STD_accumulator());
+    reduce_and_accumulate<4194304>(world, MPI_reduce(), dumb_accumulator());
+
     reduce_and_accumulate<4194304>(world, MPI_reduce(), SIMD_accumulator());
+    reduce_and_accumulate<4194304>(world, dumb_reduce(), SIMD_accumulator());
     return 0;
 }

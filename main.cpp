@@ -2,7 +2,7 @@
 #include <sys/time.h>
 
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wall -Wextra"
+#pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #include <boost/mpi.hpp>
 #pragma GCC diagnostic pop
 

@@ -55,7 +55,7 @@ struct dumb_reduce {
             std::copy_n(in_values, n, out_values);
             for (int j = 0; j < comm.size() - 1; ++j) {
                 comm.recv(boost::mpi::any_source, boost::mpi::any_tag, response.data(), n);
-                boost::simd::transform(out_values, out_values + n, response.data(), out_values, op);
+                std::transform(response.data(), response.data() + n, out_values, out_values, op);
             }
         }
     }

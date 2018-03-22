@@ -103,7 +103,7 @@ auto make_stat(Function &&function) {
 
 template<size_t Size, typename Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    auto min = make_stat<10>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
+    auto min = make_stat<50>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
     if (comm.rank() > 0) { return; }
     std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << " "
               << Accumulator::name << ": " << min.second << std::endl;
@@ -122,6 +122,6 @@ int main(int argc, char *argv[]) {
     reduce_and_accumulate<262144>(world, MPI_reduce(), dumb_accumulator());*/
 
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
-    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;
 }

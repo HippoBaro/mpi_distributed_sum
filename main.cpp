@@ -79,14 +79,12 @@ auto reduce_and_accumulate(boost::mpi::communicator const &world, Reducer reduce
     auto reduce_time = time_function([&] {
         reducer(world, &local.front(), static_cast<int>(local.size()), &reduced.front(), std::plus<>(), 0);
     });
-    if (world.rank() > 0) {
-        return std::make_pair((std::chrono::microseconds::rep)0, (std::chrono::microseconds::rep)0);
-    }
+    if (world.rank() > 0) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
         volatile __attribute__((unused)) auto t = accumulator(&reduced.front(), &reduced.back(), 0);
     });
 
-    return std::make_pair(reduce_time.count(), accumulate_time.count());
+    return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());
 }
 
 template<size_t RoundCount, typename Function>
@@ -105,10 +103,8 @@ auto make_stat(Function &&function) {
 
 template<size_t Size, typename Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    auto min = make_stat<10>([&comm] {
-        return reduce_and_accumulate<4194304>(comm, Reducer(), Accumulator());
-    });
-
+    auto min = make_stat<10>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
+    if (comm.rank() > 0) { return; }
     std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << " "
               << Accumulator::name << ": " << min.second << std::endl;
 }

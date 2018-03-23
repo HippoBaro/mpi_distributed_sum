@@ -50,7 +50,7 @@ struct dumb_reduce {
     static constexpr auto name = "dumb_reduce";
 
     template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, const T *in_values, int n, T *out_values, Op op, int root) {
+    void operator()(const boost::mpi::communicator &comm, const T *__restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
         if (comm.rank() > 0) { comm.send(root, 0, in_values, n); }
         else {
             auto response = std::vector<int>(n);
@@ -84,14 +84,14 @@ struct smarter_reduce {
         else { recv_count = comm.rank() == comm.size() / 2 ? log2_a[comm.rank()] : log2_a[abs(comm.rank() - comm.size() / 2)]; }
 
         int j = 0;
-        if (recv_count > 0) {
+        if (likely (recv_count > 0)) {
             for (j=1; !(comm.rank() % 2) && j < recv_count; ++j) {
                 comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data(), n);
                 std::transform(out_values, out_values + n, responses.data(), out_values, op);
             }
         }
         if (likely (comm.rank() != root)) {
-            MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
         }
     }
 };
@@ -113,9 +113,7 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     std::generate(local.begin(), local.begin() + Size, [] { return rand(); });
 
     comm.barrier();
-    auto reduce_time = time_function([&] {
-        reducer(comm, &local.front(), Size, &reduced.front(), std::plus<>(), 0);
-    });
+    auto reduce_time = time_function([&] { reducer(comm, &local.front(), Size, &reduced.front(), std::plus<>(), 0); });
     if (likely (comm.rank() > 0)) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
         volatile __attribute__((unused)) auto t = accumulator(reduced.data(), reduced.data() + Size, 0);

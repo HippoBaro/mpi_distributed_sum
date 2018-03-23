@@ -80,7 +80,7 @@ struct smarter_reduce {
             memcpy(in_values, out_values, n * sizeof(int));
         }
         if (comm.rank() != root) {
-            MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
             //comm.rsend(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
         }
     }

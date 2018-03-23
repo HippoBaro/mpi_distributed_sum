@@ -46,27 +46,26 @@ struct MPI_reduce {
     }
 };
 
+std::vector<int, boost::simd::allocator<int>> responses(4194304);
+
 struct dumb_reduce {
     static constexpr auto name = "dumb_reduce";
 
     template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, const T *__restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
-        if (comm.rank() > 0) { comm.send(root, 0, in_values, n); }
-        else {
-            auto response = std::vector<int>(n);
-            std::copy_n(in_values, n, out_values);
+    void operator()(const boost::mpi::communicator &comm, T *__restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
+        if (unlikely(comm.rank() == root)) {
             for (int j = 0; j < comm.size() - 1; ++j) {
-                comm.recv(boost::mpi::any_source, boost::mpi::any_tag, response.data(), n);
+                comm.recv(boost::mpi::any_source, boost::mpi::any_tag, responses.data(), n);
+                std::transform(in_values, in_values + n, responses.data(), in_values, op);
                 for (int k = 0; k < n; ++k) {
-                    out_values[k] = op(response.data()[k], out_values[k]);
+                    out_values[k] = op(responses.data()[k], out_values[k]);
                 }
             }
+            std::memcpy(out_values, in_values, n);
         }
+        else { comm.send(root, 0, in_values, n); }
     }
 };
-
-std::vector<int, boost::simd::allocator<int>> responses(4194304);
-std::vector<boost::mpi::request> pending(3);
 
 constexpr std::array<int, 9> log2_a{ {-1, 0, 1, -1, 2, -1, -1, -1, 3} };
 
@@ -91,7 +90,7 @@ struct smarter_reduce {
             }
         }
         if (likely (comm.rank() != root)) {
-            MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
         }
     }
 };

@@ -79,7 +79,7 @@ struct smarter_reduce {
         }
         memcpy(out_values, in_values, n * sizeof(int));
         if (recv_count > 0) {
-            std::cout << "receiving" << std::endl;
+            //std::cout << "receiving" << std::endl;
             boost::mpi::wait_all(pending.begin(), pending.end());
         }
         for (int k = 0; k < recv_count; ++k) {
@@ -87,7 +87,7 @@ struct smarter_reduce {
         }
         //}
         if (comm.rank() != root) {
-            std::cout << "sending" << std::endl;
+            //std::cout << "sending" << std::endl;
             MPI_Rsend(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
             //comm.rsend(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
         }

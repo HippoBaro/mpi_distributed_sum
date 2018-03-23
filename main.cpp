@@ -86,12 +86,12 @@ struct smarter_reduce {
             }
         }
         if (comm.rank() != root) {
-            if (n <= 64) {
+//            if (n <= 64) {
                 MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            }
-            else {
-                MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            }
+//            }
+//            else {
+//                //MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+//            }
         }
     }
 };

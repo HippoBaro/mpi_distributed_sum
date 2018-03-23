@@ -79,7 +79,7 @@ struct smarter_reduce {
         int j = 0;
         for (; !(comm.rank() % 2) && j < recv_count; ++j) {
             comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, buff);
-            std::transform(out_values.data(), out_values.data() + n, buff.data(), out_values.data(), op);
+            boost::simd::transform(out_values.data(), out_values.data() + n, buff.data(), out_values.data(), op);
         }
         comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values);
     }

@@ -86,37 +86,6 @@ struct smarter_reduce {
     }
 };
 
-struct even_smarter_reduce {
-    static constexpr auto name = "even_smarter_reduce";
-    template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, const T * __restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
-        //std::cout << comm.rank() << ": entered." << std::endl;
-
-        int recv_count;
-        if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
-        else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
-
-        int j = 0;
-        if (recv_count > 0) {
-            std::vector<boost::mpi::request> reqs(recv_count);
-            auto responses = std::vector<int, boost::simd::allocator<int>>(n * recv_count);
-            for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-                //std::cout << comm.rank() << ": receiving with offset " << n * j << std::endl;
-                reqs[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
-            }
-            boost::mpi::wait_all(reqs.begin(), reqs.end());
-            //std::cout << comm.rank() << ": received " << recv_count << std::endl;
-            for (int k = 0; k < recv_count; ++k) {
-                std::transform(out_values, out_values + n, responses.data() + n * k, out_values, op);
-            }
-        }
-
-        if (comm.rank() != root) {
-            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
-        }
-    }
-};
-
 template<typename Function>
 inline std::chrono::microseconds time_function(Function &&func) {
     auto begin_time = std::chrono::high_resolution_clock::now();
@@ -171,7 +140,7 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-/*    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
@@ -189,11 +158,10 @@ int main(int argc, char *argv[]) {
 
     benchmark<262144, dumb_reduce, SIMD_accumulator>(world);
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<262144, MPI_reduce, SIMD_accumulator>(world);*/
+    benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
     benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<4194304, even_smarter_reduce, SIMD_accumulator>(world);
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;
 }

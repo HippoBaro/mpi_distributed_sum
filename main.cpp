@@ -63,32 +63,25 @@ struct dumb_reduce {
 struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
-    inline void impl_root(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, T &buff) {
-        int recv_count = (int)log2(comm.size());
-        std::copy(in_values.begin(), in_values.end(), out_values.begin());
-        for (int j = 0; j < recv_count; ++j) {
-            comm.recv(j == 0 ? 1 : j + j, boost::mpi::any_tag, buff);
-            std::transform(out_values.data(), out_values.data() + n, buff.data(), out_values.data(), op);
-        }
-    }
+    void operator()(const boost::mpi::communicator &comm, T const in_values, int n, T &out_values, Op op, int root) {
+        auto response = std::vector<int, boost::simd::allocator<int>>(n);
 
-    template<typename T, typename Op>
-    inline void impl(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, T &buff) {
-        int recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2));
-        if (recv_count > 0) { std::copy(in_values.begin(), in_values.end(), out_values.begin()); }
+        int recv_count;
+        if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
+        else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
+
+        if (recv_count > 0) {
+            memcpy(out_values.data(), in_values.data(), n * sizeof(int));
+        }
+
         int j = 0;
         for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-            comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, buff);
-            boost::simd::transform(out_values.data(), out_values.data() + n, buff.data(), out_values.data(), op);
+            comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response);
+            std::transform(out_values.data(), out_values.data() + n, response.data(), out_values.data(), op);
         }
-        comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values);
-    }
-
-    template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, int root) {
-        auto buff = std::vector<int, boost::simd::allocator<int>>(n);
-        if (comm.rank() == root) { impl_root(comm, in_values, n, out_values, op, buff); }
-        else { impl(comm, in_values, n, out_values, op, buff); }
+        if (comm.rank() != root) {
+            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values);
+        }
     }
 };
 

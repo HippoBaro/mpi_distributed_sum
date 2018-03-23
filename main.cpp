@@ -130,7 +130,7 @@ auto make_stat(Function &&function) {
 
 template<size_t Size, typename Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    auto min = make_stat<50>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
+    auto min = make_stat<500>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer(), Accumulator()); });
     if (comm.rank() > 0) { return; }
     std::cout << "[Size: " << Size << "] " << Reducer::name << ": " << min.first << "us, "
               << Accumulator::name << ": " << min.second << "us" << std::endl;

@@ -68,7 +68,7 @@ struct smarter_reduce {
     void operator()(const boost::mpi::communicator &comm, T * __restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
         static std::vector<boost::mpi::request> pending(3);
         int recv_count;
-        static auto responses = std::vector<int, boost::simd::allocator<int>>(4194304 * 3);
+        static std::vector<int, boost::simd::allocator<int>> responses(4194304 * 3);
         if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
         else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
 
@@ -78,18 +78,14 @@ struct smarter_reduce {
             pending[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
         }
         memcpy(out_values, in_values, n * sizeof(int));
-        if (recv_count > 0) {
-            //std::cout << "receiving" << std::endl;
-            boost::mpi::wait_all(pending.begin(), pending.end());
-        }
         for (int k = 0; k < recv_count; ++k) {
-            std::transform(out_values, out_values + n, responses.data() + n * k, out_values, op);
+            auto p = boost::mpi::wait_any(pending.begin(), pending.end());
+            auto index = std::distance(pending.begin(), p.second);
+            std::transform(out_values, out_values + n, responses.data() + n * index, out_values, op);
         }
         //}
         if (comm.rank() != root) {
-            //std::cout << "sending" << std::endl;
             MPI_Rsend(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            //comm.rsend(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
         }
     }
 };

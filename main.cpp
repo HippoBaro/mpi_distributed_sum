@@ -66,32 +66,32 @@ struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, T * __restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
-        static std::vector<boost::mpi::request> pending(3);
         int recv_count;
-        static std::vector<int, boost::simd::allocator<int>> responses(4194304 * 3);
         if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
         else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
 
         int j = 0;
-        //if (recv_count > 0) {
-        for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-            pending[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
+        if (recv_count > 0) {
+            static std::vector<boost::mpi::request> pending(3);
+            static std::vector<int, boost::simd::allocator<int>> responses(4194304 * 3);
+
+            for (; !(comm.rank() % 2) && j < recv_count; ++j) {
+                pending[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
+            }
+            memcpy(out_values, in_values, n * sizeof(int));
+            for (int k = 0; k < recv_count; ++k) {
+                auto p = boost::mpi::wait_any(pending.begin(), pending.end());
+                auto index = std::distance(pending.begin(), p.second);
+                std::transform(out_values, out_values + n, responses.data() + n * index, out_values, op);
+            }
         }
-        memcpy(out_values, in_values, n * sizeof(int));
-        for (int k = 0; k < recv_count; ++k) {
-            auto p = boost::mpi::wait_any(pending.begin(), pending.end());
-            auto index = std::distance(pending.begin(), p.second);
-            std::transform(out_values, out_values + n, responses.data() + n * index, out_values, op);
-        }
-        //}
         if (comm.rank() != root) {
             if (n < 16) {
-                MPI_Send(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+                MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
             }
             else {
-                MPI_Rsend(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+                MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
             }
-
         }
     }
 };

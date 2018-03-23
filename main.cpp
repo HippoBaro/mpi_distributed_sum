@@ -63,7 +63,8 @@ struct dumb_reduce {
 struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
-    inline void impl_root(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, T &buff) {
+    inline void impl_root(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op) {
+        auto buff = std::vector<int, boost::simd::allocator<int>>(n);
         int recv_count = (int)log2(comm.size());
         memcpy(out_values.data(), in_values.data(), n * sizeof(int));
         for (int j = 0; j < recv_count; ++j) {
@@ -73,7 +74,8 @@ struct smarter_reduce {
     }
 
     template<typename T, typename Op>
-    inline void impl(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, T &buff) {
+    inline void impl(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op) {
+        auto buff = std::vector<int, boost::simd::allocator<int>>(n);
         int recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2));
         if (recv_count > 0) { memcpy(out_values.data(), in_values.data(), n * sizeof(int)); }
         int j = 0;
@@ -86,9 +88,8 @@ struct smarter_reduce {
 
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, int root) {
-        auto buff = std::vector<int, boost::simd::allocator<int>>(n);
-        if (comm.rank() == root) { impl_root(comm, in_values, n, out_values, op, buff); }
-        else { impl(comm, in_values, n, out_values, op, buff); }
+        if (comm.rank() == root) { impl_root(comm, in_values, n, out_values, op); }
+        else { impl(comm, in_values, n, out_values, op); }
     }
 };
 

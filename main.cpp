@@ -62,6 +62,8 @@ struct dumb_reduce {
     }
 };
 
+std::vector<int, boost::simd::allocator<int>> responses(4194304 * 3);
+
 struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
@@ -73,8 +75,6 @@ struct smarter_reduce {
         int j = 0;
         if (recv_count > 0) {
             static std::vector<boost::mpi::request> pending(3);
-            static std::vector<int, boost::simd::allocator<int>> responses(4194304 * 3);
-
             for (; !(comm.rank() % 2) && j < recv_count; ++j) {
                 pending[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
             }
@@ -170,7 +170,7 @@ int main(int argc, char *argv[]) {
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    //benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;

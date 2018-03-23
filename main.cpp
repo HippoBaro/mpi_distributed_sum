@@ -73,18 +73,20 @@ struct smarter_reduce {
         else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
 
         int j = 0;
-        if (recv_count > 0) {
-            for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-                pending[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
-            }
-            memcpy(out_values, in_values, n * sizeof(int));
-            boost::mpi::wait_all(pending.begin(), pending.end());
-            for (int k = 0; k < recv_count; ++k) {
-                std::transform(out_values, out_values + n, responses.data() + n * k, out_values, op);
-            }
+        //if (recv_count > 0) {
+        for (; !(comm.rank() % 2) && j < recv_count; ++j) {
+            pending[j] = comm.irecv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data() + n * j, n);
         }
+        memcpy(out_values, in_values, n * sizeof(int));
+        if (recv_count > 0) {
+            boost::mpi::wait_all(pending.begin(), pending.end());
+        }
+        for (int k = 0; k < recv_count; ++k) {
+            std::transform(out_values, out_values + n, responses.data() + n * k, out_values, op);
+        }
+        //}
         if (comm.rank() != root) {
-            MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            MPI_Rsend(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
             //comm.rsend(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
         }
     }

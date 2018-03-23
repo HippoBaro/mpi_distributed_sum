@@ -82,19 +82,11 @@ struct smarter_reduce {
         if (recv_count > 0) {
             for (j=1; !(comm.rank() % 2) && j < recv_count; ++j) {
                 comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, responses.data(), n);
-                //std::cout << comm.rank() << ": scheduled receive from " << comm.rank() + (j == 0 ? 1 : j + j) << "\n";
                 std::transform(out_values, out_values + n, responses.data(), out_values, op);
             }
         }
         if (comm.rank() != root) {
-            usleep(1);
-            //if (n <= 16) {
-            //std::cout << comm.rank() << ": sending to " << comm.rank() - (j == 0 ? 1 : j + j) << "\n";
-                //MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            //}
-            //else {
-                MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            //}
+            MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
         }
     }
 };

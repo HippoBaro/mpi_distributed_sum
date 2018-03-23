@@ -88,10 +88,7 @@ struct smarter_reduce {
             }
         }
         if (comm.rank() != root) {
-            if (j == 0 && n > 4)
-                MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            else
-                MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
         }
     }
 };
@@ -104,13 +101,14 @@ inline std::chrono::microseconds time_function(Function &&func) {
             std::chrono::high_resolution_clock::now() - begin_time);
 }
 
+std::vector<int, boost::simd::allocator<int>> local(4194304);
+std::vector<int, boost::simd::allocator<int>> reduced(4194304);
+
 template<size_t Size, typename Reducer, typename Accumulator>
 auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer, Accumulator accumulator) {
-    auto local = std::vector<int, boost::simd::allocator<int>>(Size);
-    auto reduced = std::vector<int, boost::simd::allocator<int>>(Size);
 
-    srand(1);  // useful for testing
-    std::generate(local.begin(), local.end(), [] { return rand(); });
+    //srand(1);  // useful for testing
+    //std::generate(local.begin(), local.end(), [] { return rand(); });
 
     comm.barrier();
     auto reduce_time = time_function([&] {
@@ -126,7 +124,7 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
 
 template<size_t RoundCount, typename Function>
 auto make_stat(Function &&function) {
-    auto res = std::array<decltype(function()), RoundCount>();
+    static std::array<decltype(function()), RoundCount> res;
     std::generate(res.begin(), res.end(), [&function] { return function(); });
     int min_reduce = std::numeric_limits<int>::max();
     int min_accumulate = std::numeric_limits<int>::max();

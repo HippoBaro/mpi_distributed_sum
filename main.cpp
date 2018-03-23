@@ -85,7 +85,13 @@ struct smarter_reduce {
         }
         //}
         if (comm.rank() != root) {
-            MPI_Rsend(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            if (n < 16) {
+                MPI_Send(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            }
+            else {
+                MPI_Rsend(out_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            }
+
         }
     }
 };

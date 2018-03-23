@@ -112,11 +112,11 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
 
     comm.barrier();
     auto reduce_time = time_function([&] {
-        reducer(comm, &local.front(), static_cast<int>(local.size()), &reduced.front(), std::plus<>(), 0);
+        reducer(comm, &local.front(), Size, &reduced.front(), std::plus<>(), 0);
     });
     if (comm.rank() > 0) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
-        volatile __attribute__((unused)) auto t = accumulator(&reduced.front(), &reduced.back(), 0);
+        volatile __attribute__((unused)) auto t = accumulator(reduced.data(), reduced.data() + Size, 0);
     });
 
     return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());

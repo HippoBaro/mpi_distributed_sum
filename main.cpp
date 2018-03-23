@@ -66,20 +66,19 @@ struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, const T * __restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
-        auto response = std::vector<int, boost::simd::allocator<int>>(n);
-
         int recv_count;
         if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
         else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
 
-        if (recv_count > 0) {
-            memcpy(out_values, in_values, n * sizeof(int));
-        }
-
         int j = 0;
-        for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-            comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response.data(), n);
-            std::transform(out_values, out_values + n, response.data(), out_values, op);
+        if (recv_count > 0) {
+            auto response = std::vector<int, boost::simd::allocator<int>>(n);
+            memcpy(out_values, in_values, n * sizeof(int));
+
+            for (; !(comm.rank() % 2) && j < recv_count; ++j) {
+                comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response.data(), n);
+                std::transform(out_values, out_values + n, response.data(), out_values, op);
+            }
         }
         if (comm.rank() != root) {
             comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);

@@ -17,6 +17,7 @@
 #define likely(x) __builtin_expect ((x), 1)
 #define unlikely(x) __builtin_expect ((x), 0)
 
+/// Simple SIMDed accumulator, reduce an array to a single value using std::plus<>
 struct SIMD_accumulator {
     static constexpr auto name = "SIMD_accumulator";
 
@@ -26,6 +27,7 @@ struct SIMD_accumulator {
     }
 };
 
+/// Simple linear accumulator, reduce an array to a single value using std::plus<>
 struct dumb_accumulator {
     static constexpr auto name = "dumb_accumulator";
 
@@ -37,6 +39,8 @@ struct dumb_accumulator {
     }
 };
 
+/// Reducer that uses the native MPI_Reduce function
+/// \tparam Size Size of the arrays to reduce
 template <size_t Size>
 struct MPI_reduce {
     static constexpr auto name = "MPI_reduce";
@@ -49,6 +53,9 @@ struct MPI_reduce {
 
 std::vector<int, boost::simd::allocator<int>> responses(4194304);
 
+/// Very simple reducer where every node except root sends it's part of the information to root.
+/// Root reduces as it receives
+/// \tparam Size Size of the arrays to reduce
 template <size_t Size>
 struct dumb_reduce {
     static constexpr auto name = "dumb_reduce";
@@ -68,6 +75,8 @@ struct dumb_reduce {
 
 constexpr std::array<int, 9> log2_a{ {-1, 0, 1, -1, 2, -1, -1, -1, 3} };
 
+/// Smarter reducer implementing a binomial-tree
+/// \tparam Size Size of the arrays to reduce
 template<size_t Size>
 struct smarter_reduce : public dumb_reduce<Size> {
     static constexpr auto name = "smarter_reduce";
@@ -98,6 +107,8 @@ struct smarter_reduce : public dumb_reduce<Size> {
 
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, T * __restrict__ in_values, T * __restrict__ out_values, Op op, int root)  {
+        /// If the arrays are smaller than the a standard MTU, there is no practical advantages paying the overhead
+        /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
         if (Size > 1024)
             impl(comm, in_values, out_values, op, root);
         else
@@ -105,6 +116,10 @@ struct smarter_reduce : public dumb_reduce<Size> {
     }
 };
 
+/// Utility function to time the execution of a function using the most precise clock available on the system
+/// \tparam Function The function's type
+/// \param func the callable object
+/// \return a a std::chrono duration casted as microsoconds.
 template<typename Function>
 inline std::chrono::microseconds time_function(Function &&func) {
     auto begin_time = std::chrono::high_resolution_clock::now();
@@ -116,6 +131,14 @@ inline std::chrono::microseconds time_function(Function &&func) {
 std::vector<int, boost::simd::allocator<int>> local(4194304);
 std::vector<int, boost::simd::allocator<int>> reduced(4194304);
 
+/// Main benchmark function. Reduce and accumulate distributed vectors.
+/// \tparam Size Size of the arrays to work with
+/// \tparam Reducer Reducing policy
+/// \tparam Accumulator Accumulating policy
+/// \param comm Communicator to benchmark on
+/// \param reducer instance of the reducer
+/// \param accumulator instance of the accumulator
+/// \return a pair containg the execution time for the reduction and accumulation
 template<size_t Size, typename Reducer, typename Accumulator>
 auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer, Accumulator accumulator) {
     srand(1);  // useful for testing
@@ -131,6 +154,11 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());
 }
 
+/// Execute benchmark function multiple times and select the best result
+/// \tparam RoundCount How many time to execute the function
+/// \tparam Function Benchmark function type
+/// \param function Benchmark function
+/// \return a pair containg the best result for reducing and accumulating
 template<size_t RoundCount, typename Function>
 auto make_stat(Function &&function) {
     static std::array<decltype(function()), RoundCount> res;
@@ -145,6 +173,11 @@ auto make_stat(Function &&function) {
     return std::make_pair(min_reduce, min_accumulate);
 }
 
+/// Retreive the results and format result
+/// \tparam Size Size of the array to work with
+/// \tparam Reducer Reducing policy
+/// \tparam Accumulator Accumulating policy
+/// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
     auto min = make_stat<100>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });

@@ -110,7 +110,7 @@ std::vector<int, boost::simd::allocator<int>> reduced(4194304);
 template<size_t Size, typename Reducer, typename Accumulator>
 auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer, Accumulator accumulator) {
     srand(1);  // useful for testing
-    std::generate(local.begin(), local.end(), [] { return rand(); });
+    std::generate(local.begin(), local.begin() + Size, [] { return rand(); });
 
     comm.barrier();
     auto reduce_time = time_function([&] {

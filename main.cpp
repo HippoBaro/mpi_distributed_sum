@@ -14,6 +14,9 @@
 
 #pragma GCC diagnostic pop
 
+#define likely(x) __builtin_expect ((x), 1)
+#define unlikely(x) __builtin_expect ((x), 0)
+
 struct SIMD_accumulator {
     static constexpr auto name = "SIMD_accumulator";
 
@@ -71,13 +74,13 @@ struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, T * __restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
-        if (!(comm.rank() % 2)) {
+        if (likely (!(comm.rank() % 2))) {
             comm.recv(comm.rank() + 1, boost::mpi::any_tag, responses.data(), n);
             std::transform(in_values, in_values + n, responses.data(), out_values, op);
         }
 
         int recv_count;
-        if (comm.rank() == root) { recv_count = log2_a[comm.size()]; }
+        if (unlikely(comm.rank() == root)) { recv_count = log2_a[comm.size()]; }
         else { recv_count = comm.rank() == comm.size() / 2 ? log2_a[comm.rank()] : log2_a[abs(comm.rank() - comm.size() / 2)]; }
 
         int j = 0;
@@ -87,7 +90,7 @@ struct smarter_reduce {
                 std::transform(out_values, out_values + n, responses.data(), out_values, op);
             }
         }
-        if (comm.rank() != root) {
+        if (likely (comm.rank() != root)) {
             MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
         }
     }
@@ -114,7 +117,7 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     auto reduce_time = time_function([&] {
         reducer(comm, &local.front(), Size, &reduced.front(), std::plus<>(), 0);
     });
-    if (comm.rank() > 0) { return std::make_pair(0, 0); }
+    if (likely (comm.rank() > 0)) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
         volatile __attribute__((unused)) auto t = accumulator(reduced.data(), reduced.data() + Size, 0);
     });

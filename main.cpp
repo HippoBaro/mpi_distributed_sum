@@ -69,10 +69,7 @@ struct smarter_reduce {
         int recv_count;
         if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
         else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
-
-        if (recv_count > 0) {
-            memcpy(out_values, in_values, n * sizeof(int));
-        }
+        memcpy(out_values, in_values, n * sizeof(int));
 
         int j = 0;
         for (; !(comm.rank() % 2) && j < recv_count; ++j) {
@@ -80,7 +77,7 @@ struct smarter_reduce {
             std::transform(out_values, out_values + n, response.data(), out_values, op);
         }
         if (comm.rank() != root) {
-            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
+            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, out_values, n);
         }
     }
 };
@@ -159,7 +156,7 @@ int main(int argc, char *argv[]) {
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
-    //benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;

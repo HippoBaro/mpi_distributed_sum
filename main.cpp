@@ -72,7 +72,7 @@ struct smarter_reduce {
 
         int j = 0;
         if (recv_count > 0) {
-            auto response = std::vector<int, boost::simd::allocator<int>>(n);
+            static auto response = std::vector<int, boost::simd::allocator<int>>(4194304);
             memcpy(out_values, in_values, n * sizeof(int));
 
             for (; !(comm.rank() % 2) && j < recv_count; ++j) {

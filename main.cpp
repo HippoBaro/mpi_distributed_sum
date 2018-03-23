@@ -76,12 +76,13 @@ struct smarter_reduce {
             memcpy(out_values, in_values, n * sizeof(int));
 
             for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-                comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response.data(), n);
+                comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, (char * __restrict__)response.data(), n * sizeof(T));
                 std::transform(out_values, out_values + n, response.data(), out_values, op);
             }
         }
         if (comm.rank() != root) {
-            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
+            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0,
+                      (recv_count > 0) ?(char * __restrict__)out_values : (char * __restrict__)in_values, n * sizeof(T));
         }
     }
 };

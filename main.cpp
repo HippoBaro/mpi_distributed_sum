@@ -38,8 +38,8 @@ struct MPI_reduce {
     static constexpr auto name = "MPI_reduce";
 
     template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, int root) {
-        boost::mpi::reduce(comm, in_values.data(), n, out_values.data(), op, root);
+    void operator()(const boost::mpi::communicator &comm, const T *in_values, int n, T *out_values, Op op, int root) {
+        boost::mpi::reduce(comm, in_values, n, out_values, op, root);
     }
 };
 
@@ -47,14 +47,14 @@ struct dumb_reduce {
     static constexpr auto name = "dumb_reduce";
 
     template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, T const &in_values, int n, T &out_values, Op op, int root) {
-        if (comm.rank() > 0) { comm.send(root, 0, in_values.data(), n); }
+    void operator()(const boost::mpi::communicator &comm, const T *in_values, int n, T *out_values, Op op, int root) {
+        if (comm.rank() > 0) { comm.send(root, 0, in_values, n); }
         else {
             auto response = std::vector<int, boost::simd::allocator<int>>(n);
-            std::copy(in_values.begin(), in_values.end(), out_values.begin());
+            std::copy_n(in_values, n, out_values);
             for (int j = 0; j < comm.size() - 1; ++j) {
                 comm.recv(boost::mpi::any_source, boost::mpi::any_tag, response.data(), n);
-                std::transform(response.begin(), response.end(), out_values.begin(), out_values.begin(), op);
+                std::transform(response.data(), response.data() + n, out_values, out_values, op);
             }
         }
     }
@@ -63,7 +63,7 @@ struct dumb_reduce {
 struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, T const in_values, int n, T &out_values, Op op, int root) {
+    void operator()(const boost::mpi::communicator &comm, const T * __restrict__ in_values, int n, T * __restrict__ out_values, Op op, int root) {
         auto response = std::vector<int, boost::simd::allocator<int>>(n);
 
         int recv_count;
@@ -71,16 +71,16 @@ struct smarter_reduce {
         else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
 
         if (recv_count > 0) {
-            memcpy(out_values.data(), in_values.data(), n * sizeof(int));
+            memcpy(out_values, in_values, n * sizeof(int));
         }
 
         int j = 0;
         for (; !(comm.rank() % 2) && j < recv_count; ++j) {
-            comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response);
-            std::transform(out_values.data(), out_values.data() + n, response.data(), out_values, op);
+            comm.recv(comm.rank() + (j == 0 ? 1 : j + j), boost::mpi::any_tag, response.data(), n);
+            std::transform(out_values, out_values + n, response.data(), out_values, op);
         }
         if (comm.rank() != root) {
-            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values);
+            comm.send(comm.rank() - (j == 0 ? 1 : j + j), 0, (recv_count > 0) ? out_values : in_values, n);
         }
     }
 };
@@ -103,7 +103,7 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
 
     comm.barrier();
     auto reduce_time = time_function([&] {
-        reducer(comm, local, static_cast<int>(local.size()), reduced, std::plus<>(), 0);
+        reducer(comm, &local.front(), static_cast<int>(local.size()), &reduced.front(), std::plus<>(), 0);
     });
     if (comm.rank() > 0) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    //benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;

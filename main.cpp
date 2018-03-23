@@ -65,6 +65,8 @@ struct dumb_reduce {
 std::vector<int, boost::simd::allocator<int>> responses(4194304);
 std::vector<boost::mpi::request> pending(3);
 
+constexpr std::array<int, 9> log2_a{ {-1, 0, 1, -1, 2, -1, -1, -1, 3} };
+
 struct smarter_reduce {
     static constexpr auto name = "smarter_reduce";
     template<typename T, typename Op>
@@ -75,8 +77,8 @@ struct smarter_reduce {
         }
 
         int recv_count;
-        if (comm.rank() == root) { recv_count = (int)log2(comm.size()); }
-        else { recv_count = comm.rank() == comm.size() / 2 ? (int)log2(comm.rank()) : (int)log2(abs(comm.rank() - comm.size() / 2)); }
+        if (comm.rank() == root) { recv_count = log2_a[comm.size()]; }
+        else { recv_count = comm.rank() == comm.size() / 2 ? log2_a[comm.rank()] : log2_a[abs(comm.rank() - comm.size() / 2)]; }
 
         int j = 0;
         if (recv_count > 0) {
@@ -86,10 +88,10 @@ struct smarter_reduce {
             }
         }
         if (comm.rank() != root) {
-            if (j == 0)
-                MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
-            else
+            if (j == 0 && n > 64)
                 MPI_Rsend((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
+            else
+                MPI_Send((recv_count > 0) ? out_values : in_values, n, boost::mpi::get_mpi_datatype<T>(*out_values), comm.rank() - (j == 0 ? 1 : j + j), 0, comm);
         }
     }
 };

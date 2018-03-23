@@ -139,7 +139,7 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-/*    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);*/
 
-    //benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;

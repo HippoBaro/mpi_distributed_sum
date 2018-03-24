@@ -163,7 +163,9 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     auto reduce_time = time_function([&] { reducer(comm, &local.front(), &reduced.front(), std::plus<>(), 0); });
     if (likely (comm.rank() > 0)) { return std::make_pair(0, 0); }
     auto accumulate_time = time_function([&] {
-        volatile __attribute__((unused)) auto t = accumulator(reduced.data(), reduced.data() + Size, 0);
+        /*volatile __attribute__((unused))*/ auto t = accumulator(reduced.data(), reduced.data() + Size, 0);
+        if (comm.rank() == 0)
+            std::cout << t << std::endl;
     });
 
     return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());
@@ -197,15 +199,15 @@ template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
     auto min = make_stat<100>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
     if (comm.rank() > 0) { return; }
-    std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << min.first << "us, "
-              << Accumulator::name << ": " << min.second << "us" << std::endl;
+    //std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << min.first << "us, "
+    //          << Accumulator::name << ": " << min.second << "us" << std::endl;
 }
 
 int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
+    /*benchmark<4, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
@@ -225,7 +227,7 @@ int main(int argc, char *argv[]) {
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<4194304, dumb_reduce, parallel_accumulator>(world);
+    benchmark<4194304, dumb_reduce, parallel_accumulator>(world);*/
     benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
     benchmark<4194304, MPI_reduce, parallel_accumulator>(world);
     return 0;

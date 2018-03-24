@@ -2,6 +2,7 @@
 #include <chrono>
 #include <numeric>
 #include <valarray>
+#include <omp.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"

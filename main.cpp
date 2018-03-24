@@ -8,9 +8,11 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include <boost/mpi.hpp>
+/*
 #include <boost/simd.hpp>
 #include <boost/simd/algorithm.hpp>
 #include <boost/simd/memory.hpp>
+*/
 
 #pragma GCC diagnostic pop
 
@@ -51,7 +53,7 @@ struct MPI_reduce {
     }
 };
 
-std::vector<int, boost::simd::allocator<int>> responses(4194304);
+std::vector<int> responses(4194304);
 
 /// Very simple reducer where every node except root sends it's part of the information to root.
 /// Root reduces as it receives
@@ -128,8 +130,8 @@ inline std::chrono::microseconds time_function(Function &&func) {
             std::chrono::high_resolution_clock::now() - begin_time);
 }
 
-std::vector<int, boost::simd::allocator<int>> local(4194304);
-std::vector<int, boost::simd::allocator<int>> reduced(4194304);
+std::vector<int> local(4194304);
+std::vector<int> reduced(4194304);
 
 /// Main benchmark function. Reduce and accumulate distributed vectors.
 /// \tparam Size Size of the arrays to work with

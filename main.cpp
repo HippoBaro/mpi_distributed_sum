@@ -41,12 +41,13 @@ struct parallel_accumulator {
     static constexpr auto name = "parallel_accumulator";
 
     template<typename T>
-    auto operator()(T const *first, T const *last, T init) {
+    auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
         T res = init;
         #pragma omp parallel for
         for (int j = 0; j < std::distance(first, last); ++j) {
             res += *first++;
         }
+        return res;
     }
 };
 

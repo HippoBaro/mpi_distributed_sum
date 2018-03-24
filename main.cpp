@@ -10,6 +10,7 @@
 
 #include <boost/mpi.hpp>
 #include <future>
+#include <iomanip>
 
 #pragma GCC diagnostic pop
 
@@ -153,10 +154,10 @@ inline std::chrono::microseconds time_function(Function &&func) {
 /// \return a pair containg the execution time for the reduction and accumulation
 template<size_t Size, typename Reducer, typename Accumulator>
 auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer, Accumulator accumulator) {
-    std::vector<int> local(4194304);
-    std::vector<int> reduced(4194304);
+    static std::vector<int> local(4194304);
+    static std::vector<int> reduced(4194304);
 
-    srand(1);  // useful for testing
+    srand(1);  // useful for testing the results of the final accumulations accros Reducers and Accumulators
     std::generate(local.begin(), local.begin() + Size, [] { return rand(); });
 
     comm.barrier();
@@ -170,6 +171,17 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     return std::make_tuple((int)reduce_time.count(), (int)accumulate_time.count(), res);
 }
 
+struct result {
+    struct minmaxavg {
+        int min;
+        int max;
+        float avg;
+    };
+    struct minmaxavg reduction;
+    struct minmaxavg accumulation;
+    int accumulation_sum;
+};
+
 /// Execute benchmark function multiple times and select the best result
 /// \tparam RoundCount How many time to execute the function
 /// \tparam Function Benchmark function type
@@ -179,14 +191,22 @@ template<size_t RoundCount, typename Function>
 auto make_stat(Function &&function) {
     static std::array<decltype(function()), RoundCount> res;
     std::generate(res.begin(), res.end(), [&function] { return function(); });
-    int min_reduce = std::numeric_limits<int>::max();
-    int min_accumulate = std::numeric_limits<int>::max();
+    struct result result{{ std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), 0 },
+                         { std::numeric_limits<int>::max(), std::numeric_limits<int>::min(), 0 },
+                         std::get<2>(res.front()) };
 
+    int sum_reduction = 0, sum_accumulation = 0;
     for (auto &&item : res) {
-        if (std::get<0>(item) < min_reduce) { min_reduce = std::get<0>(item); }
-        if (std::get<1>(item) < min_accumulate) { min_accumulate = std::get<1>(item); }
+        if (std::get<0>(item) < result.reduction.min) { result.reduction.min = std::get<0>(item); }
+        if (std::get<1>(item) < result.accumulation.min) { result.accumulation.min = std::get<1>(item); }
+        if (std::get<0>(item) > result.reduction.max) { result.reduction.max = std::get<0>(item); }
+        if (std::get<1>(item) > result.accumulation.max) { result.accumulation.max = std::get<1>(item); }
+        sum_reduction += std::get<0>(item);
+        sum_accumulation += std::get<1>(item);
     }
-    return std::make_tuple(min_reduce, min_accumulate, std::get<2>(res.front()));
+    result.reduction.avg = sum_reduction / res.size();
+    result.accumulation.avg = sum_accumulation / res.size();
+    return result;
 }
 
 /// Retreive the results and format result
@@ -195,41 +215,37 @@ auto make_stat(Function &&function) {
 /// \tparam Accumulator Accumulating policy
 /// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
-void benchmark(boost::mpi::communicator const &comm) {
-    auto results = make_stat<1000>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+int benchmark(boost::mpi::communicator const &comm) {
+    struct result results = make_stat<10>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+    if (comm.rank() > 0) { return 0; }
+    std::cout << std::setw(10) << std::left  << Size << std::setw(10) << std::right << results.reduction.min
+              << std::setw(10) << std::right << results.reduction.max << std::setw(10) << std::right << results.reduction.avg
+              << std::setw(10) << std::right << results.accumulation.min << std::setw(10) << std::right << results.accumulation.max
+              << std::setw(10) << std::right << results.accumulation.avg << std::setw(14) << std::right << results.accumulation_sum << std::endl;
+    return 0;
+}
+
+template<template<size_t> class Reducer, typename Accumulator, size_t ...Size>
+void unroll_benchmark(boost::mpi::communicator const &comm) {
+    using expander = int[];
+    if (comm.rank() == 0) {
+        std::cout << "Testing using " << Reducer<0>::name << " and " << Accumulator::name << " [" << 10 << " rounds]:\n";
+        std::cout << std::setw(10) << std::left  << "Data size" << std::setw(10) << std::right << "Red. min"
+                  << std::setw(10) << std::right << "Red. max" << std::setw(10) << std::right << "Red. avr"
+                  << std::setw(10) << std::right << "Acc. min" << std::setw(10) << std::right << "Acc. max"
+                  << std::setw(10) << std::right << "Acc. avr" << std::setw(14) << std::right << "Result" << std::endl;
+    }
+    (void) expander{ 0, (benchmark<Size, Reducer, Accumulator>(comm))... };
     if (comm.rank() > 0) { return; }
-    std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << std::get<0>(results) << "us, "
-              << Accumulator::name << ": " << std::get<1>(results) << "us"
-              << ", final sum: " << std::get<2>(results) << std::endl;
+    std::cout << std::endl;
 }
 
 int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<4, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<4, MPI_reduce, SIMD_accumulator>(world);
-
-    benchmark<64, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<64, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<64, MPI_reduce, SIMD_accumulator>(world);
-
-    benchmark<1024, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<1024, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<1024, MPI_reduce, SIMD_accumulator>(world);
-
-    benchmark<16384, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<16384, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<16384, MPI_reduce, SIMD_accumulator>(world);
-
-    benchmark<262144, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
-
-    benchmark<4194304, dumb_reduce, parallel_accumulator>(world);
-    benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
-    benchmark<4194304, MPI_reduce, parallel_accumulator>(world);
-
-    return 0;
+    unroll_benchmark<MPI_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+    unroll_benchmark<dumb_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+    unroll_benchmark<smarter_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+    return EXIT_SUCCESS;
 }

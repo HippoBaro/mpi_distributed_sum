@@ -8,11 +8,6 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include <boost/mpi.hpp>
-/*
-#include <boost/simd.hpp>
-#include <boost/simd/algorithm.hpp>
-#include <boost/simd/memory.hpp>
-*/
 
 #pragma GCC diagnostic pop
 
@@ -24,7 +19,7 @@ struct SIMD_accumulator {
     static constexpr auto name = "SIMD_accumulator";
 
     template<typename T>
-    auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
+    __attribute__((always_inline)) auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
         return std::accumulate(first, last, init);
     }
 };
@@ -84,7 +79,8 @@ struct smarter_reduce : public dumb_reduce<Size> {
     static constexpr auto name = "smarter_reduce";
 
     template<typename T, typename Op>
-    void impl(const boost::mpi::communicator &comm, T * __restrict__ in_values, T * __restrict__ out_values, Op op, int root)  {
+    __attribute__((always_inline)) void impl(const boost::mpi::communicator &comm, T * __restrict__ in_values,
+                                             T * __restrict__ out_values, Op op, int root)  {
         if (likely (!(comm.rank() % 2))) {
             comm.recv(comm.rank() + 1, boost::mpi::any_tag, responses.data(), Size);
             std::transform(in_values, in_values + Size, responses.data(), out_values, op);
@@ -108,7 +104,8 @@ struct smarter_reduce : public dumb_reduce<Size> {
     }
 
     template<typename T, typename Op>
-    void operator()(const boost::mpi::communicator &comm, T * __restrict__ in_values, T * __restrict__ out_values, Op op, int root)  {
+    __attribute__((always_inline)) void operator()(const boost::mpi::communicator &comm,T * __restrict__ in_values,
+                                                   T * __restrict__ out_values, Op op, int root)  {
         /// If the arrays are smaller than the a standard MTU, there is no practical advantages paying the overhead
         /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
         if (Size > 1024)

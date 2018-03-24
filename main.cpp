@@ -143,9 +143,6 @@ inline std::chrono::microseconds time_function(Function &&func) {
             std::chrono::high_resolution_clock::now() - begin_time);
 }
 
-std::vector<int> local(4194304);
-std::vector<int> reduced(4194304);
-
 /// Main benchmark function. Reduce and accumulate distributed vectors.
 /// \tparam Size Size of the arrays to work with
 /// \tparam Reducer Reducing policy
@@ -158,6 +155,9 @@ template<size_t Size, typename Reducer, typename Accumulator>
 auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer, Accumulator accumulator) {
     srand(1);  // useful for testing
     std::generate(local.begin(), local.begin() + Size, [] { return rand(); });
+
+    std::vector<int> local(4194304);
+    std::vector<int> reduced(4194304);
 
     comm.barrier();
     auto reduce_time = time_function([&] { reducer(comm, &local.front(), &reduced.front(), std::plus<>(), 0); });

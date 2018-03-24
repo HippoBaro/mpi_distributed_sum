@@ -26,7 +26,7 @@ struct SIMD_accumulator {
     }
 };
 
-/// Simple linear accumulator, reduce an array to a single value using std::plus<>
+/// Simple, non-optimized linear accumulator, reduce an array to a single value using std::plus<>
 struct dumb_accumulator {
     static constexpr auto name = "dumb_accumulator";
 
@@ -38,6 +38,7 @@ struct dumb_accumulator {
     }
 };
 
+/// OpenMP accumulator. OpenMP only creates thread when required so this isn't much faster that the SIMD version
 struct parallel_accumulator {
     static constexpr auto name = "parallel_accumulator";
 
@@ -67,7 +68,7 @@ struct MPI_reduce {
 std::vector<int> responses(4194304);
 
 /// Very simple reducer where every node except root sends it's part of the information to root.
-/// Root reduces as it receives
+/// Root reduces as it receives them
 /// \tparam Size Size of the arrays to reduce
 template <size_t Size>
 struct dumb_reduce {
@@ -86,6 +87,7 @@ struct dumb_reduce {
     }
 };
 
+///We need the log2 function to make binomial tree, but log2() is freakin slow
 constexpr std::array<int, 9> log2_a{ {-1, 0, 1, -1, 2, -1, -1, -1, 3} };
 
 /// Smarter reducer implementing a binomial-tree
@@ -122,7 +124,7 @@ struct smarter_reduce : public dumb_reduce<Size> {
     template<typename T, typename Op>
     __attribute__((always_inline)) void operator()(const boost::mpi::communicator &comm,T * __restrict__ in_values,
                                                    T * __restrict__ out_values, Op op, int root)  {
-        /// If the arrays are smaller than the a standard MTU, there is no practical advantages paying the overhead
+        /// If the arrays are smaller than the standard MTU, there is no practical advantages paying the overhead
         /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
         if (Size > 1024) { impl(comm, in_values, out_values, op, root); }
         else { dumb_reduce<Size>::operator()(comm, in_values, out_values, op, root); }
@@ -194,7 +196,7 @@ auto make_stat(Function &&function) {
 /// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    auto results = make_stat<10000>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+    auto results = make_stat<1000>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
     if (comm.rank() > 0) { return; }
     std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << std::get<0>(results) << "us, "
               << Accumulator::name << ": " << std::get<1>(results) << "us"

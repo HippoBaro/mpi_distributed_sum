@@ -8,6 +8,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 #include <boost/mpi.hpp>
+#include <future>
 
 #pragma GCC diagnostic pop
 
@@ -33,6 +34,19 @@ struct dumb_accumulator {
         volatile T res = init;
         while (first != last) { res += *first++; }
         return res;
+    }
+};
+
+struct parallel_accumulator {
+    static constexpr auto name = "parallel_accumulator";
+
+    template<typename T>
+    auto operator()(T const *first, T const *last, T init) {
+        T res = init;
+        #pragma omp parallel for
+        for (int j = 0; j < std::distance(first, last); ++j) {
+            res += *first++;
+        }
     }
 };
 
@@ -189,28 +203,28 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4, dumb_reduce, parallel_accumulator>(world);
     benchmark<4, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<64, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<64, dumb_reduce, parallel_accumulator>(world);
     benchmark<64, smarter_reduce, SIMD_accumulator>(world);
     benchmark<64, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<1024, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<1024, dumb_reduce, parallel_accumulator>(world);
     benchmark<1024, smarter_reduce, SIMD_accumulator>(world);
     benchmark<1024, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<16384, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<16384, dumb_reduce, parallel_accumulator>(world);
     benchmark<16384, smarter_reduce, SIMD_accumulator>(world);
     benchmark<16384, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<262144, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<262144, dumb_reduce, parallel_accumulator>(world);
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, dumb_reduce, parallel_accumulator>(world);
+    benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
     benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
     return 0;
 }

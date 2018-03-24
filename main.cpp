@@ -225,9 +225,9 @@ int main(int argc, char *argv[]) {
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<4194304, dumb_reduce, parallel_accumulator>(world);
-    benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
-    benchmark<4194304, MPI_reduce, parallel_accumulator>(world);
+    benchmark<4194304, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, smarter_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
 
     return 0;
 }

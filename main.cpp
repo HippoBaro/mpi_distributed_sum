@@ -194,7 +194,7 @@ auto make_stat(Function &&function) {
 /// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    auto results = make_stat<1>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+    auto results = make_stat<10000>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
     if (comm.rank() > 0) { return; }
     std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << std::get<0>(results) << "us, "
               << Accumulator::name << ": " << std::get<1>(results) << "us"

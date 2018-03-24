@@ -124,16 +124,14 @@ struct smarter_reduce : public dumb_reduce<Size> {
                                                    T * __restrict__ out_values, Op op, int root)  {
         /// If the arrays are smaller than the a standard MTU, there is no practical advantages paying the overhead
         /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
-        if (Size > 64)
+        if (Size > 1024)
         {
             if (comm.rank() == 0)
-            std::cout << "impl" << std::endl;
             impl(comm, in_values, out_values, op, root);
         }
         else
         {
             if (comm.rank() == 0)
-            std::cout << "fallback" << std::endl;
             dumb_reduce<Size>::operator()(comm, in_values, out_values, op, root);
         }
     }
@@ -169,14 +167,13 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
 
     comm.barrier();
     auto reduce_time = time_function([&] { reducer(comm, &local.front(), &reduced.front(), std::plus<>(), 0); });
-    if (likely (comm.rank() > 0)) { return std::make_pair(0, 0); }
+    if (likely (comm.rank() > 0)) { return std::make_tuple(0, 0, 0); }
+    int res;
     auto accumulate_time = time_function([&] {
-        /*volatile __attribute__((unused))*/ auto t = accumulator(reduced.data(), reduced.data() + Size, 0);
-        if (comm.rank() == 0)
-            std::cout << t << std::endl;
+        res = accumulator(reduced.data(), reduced.data() + Size, 0);
     });
 
-    return std::make_pair((int)reduce_time.count(), (int)accumulate_time.count());
+    return std::make_tuple((int)reduce_time.count(), (int)accumulate_time.count(), res);
 }
 
 /// Execute benchmark function multiple times and select the best result
@@ -192,10 +189,10 @@ auto make_stat(Function &&function) {
     int min_accumulate = std::numeric_limits<int>::max();
 
     for (auto &&item : res) {
-        if (item.first < min_reduce) { min_reduce = item.first; }
-        if (item.second < min_accumulate) { min_accumulate = item.second; }
+        if (std::get<0>(item) < min_reduce) { min_reduce = std::get<0>(item); }
+        if (std::get<1>(item) < min_accumulate) { min_accumulate = std::get<1>(item); }
     }
-    return std::make_pair(min_reduce, min_accumulate);
+    return std::make_tuple(min_reduce, min_accumulate, std::get<2>(res.front()));
 }
 
 /// Retreive the results and format result
@@ -205,10 +202,11 @@ auto make_stat(Function &&function) {
 /// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 void benchmark(boost::mpi::communicator const &comm) {
-    make_stat<1>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+    auto results = make_stat<1>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
     if (comm.rank() > 0) { return; }
-    //std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << min.first << "us, "
-    //          << Accumulator::name << ": " << min.second << "us" << std::endl;
+    std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << std::get<0>(results) << "us, "
+              << Accumulator::name << ": " << std::get<1>(results) << "us"
+              << ", final sum:" << std::get<2>(results) << std::endl;
 }
 
 int main(int argc, char *argv[]) {

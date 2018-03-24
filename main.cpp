@@ -44,7 +44,7 @@ struct parallel_accumulator {
     template<typename T>
     auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
         T res = init;
-        #pragma omp parallel for reduction (+:res)
+        #pragma omp parallel for reduction (+:res) schedule(static) parallel num_threads(4)
         for (int j = 0; j < std::distance(first, last); ++j) {
             res += first[j];
         }

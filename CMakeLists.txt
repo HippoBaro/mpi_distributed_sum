@@ -9,5 +9,5 @@ set(OPTS -march=native -fopenmp -Ofast -Wall -Wextra -Werror -std=c++14)
 
 add_executable(mpi_sum main.cpp)
 target_compile_options(mpi_sum PUBLIC ${OPTS})
-target_link_libraries(mpi_sum PUBLIC ${Boost_LIBRARIES} pthread openmp)
+target_link_libraries(mpi_sum PUBLIC ${Boost_LIBRARIES} pthread)
 target_include_directories(mpi_sum PUBLIC ${Boost_INCLUDE_DIRS} boost.simd/include)

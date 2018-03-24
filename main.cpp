@@ -124,16 +124,8 @@ struct smarter_reduce : public dumb_reduce<Size> {
                                                    T * __restrict__ out_values, Op op, int root)  {
         /// If the arrays are smaller than the a standard MTU, there is no practical advantages paying the overhead
         /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
-        if (Size > 1024)
-        {
-            if (comm.rank() == 0)
-            impl(comm, in_values, out_values, op, root);
-        }
-        else
-        {
-            if (comm.rank() == 0)
-            dumb_reduce<Size>::operator()(comm, in_values, out_values, op, root);
-        }
+        if (Size > 1024) { impl(comm, in_values, out_values, op, root); }
+        else { dumb_reduce<Size>::operator()(comm, in_values, out_values, op, root); }
     }
 };
 
@@ -206,7 +198,7 @@ void benchmark(boost::mpi::communicator const &comm) {
     if (comm.rank() > 0) { return; }
     std::cout << "[Size: " << Size << "] " << Reducer<Size>::name << ": " << std::get<0>(results) << "us, "
               << Accumulator::name << ": " << std::get<1>(results) << "us"
-              << ", final sum:" << std::get<2>(results) << std::endl;
+              << ", final sum: " << std::get<2>(results) << std::endl;
 }
 
 int main(int argc, char *argv[]) {

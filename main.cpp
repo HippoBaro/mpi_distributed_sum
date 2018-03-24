@@ -231,6 +231,7 @@ int main(int argc, char *argv[]) {
     benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
     benchmark<4194304, MPI_reduce, parallel_accumulator>(world);*/
 
+    benchmark<1024, dumb_reduce, SIMD_accumulator>(world);
     benchmark<1024, smarter_reduce, SIMD_accumulator>(world);
     benchmark<1024, MPI_reduce, SIMD_accumulator>(world);
 

@@ -44,7 +44,7 @@ struct parallel_accumulator {
     template<typename T>
     auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
         T res = init;
-        #pragma omp parallel for
+        #pragma omp parallel for reduction (+:res)
         for (int j = 0; j < std::distance(first, last); ++j) {
             res += *first++;
         }
@@ -205,28 +205,28 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-    benchmark<4, dumb_reduce, parallel_accumulator>(world);
+    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<64, dumb_reduce, parallel_accumulator>(world);
+    benchmark<64, dumb_reduce, SIMD_accumulator>(world);
     benchmark<64, smarter_reduce, SIMD_accumulator>(world);
     benchmark<64, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<1024, dumb_reduce, parallel_accumulator>(world);
+    benchmark<1024, dumb_reduce, SIMD_accumulator>(world);
     benchmark<1024, smarter_reduce, SIMD_accumulator>(world);
     benchmark<1024, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<16384, dumb_reduce, parallel_accumulator>(world);
+    benchmark<16384, dumb_reduce, SIMD_accumulator>(world);
     benchmark<16384, smarter_reduce, SIMD_accumulator>(world);
     benchmark<16384, MPI_reduce, SIMD_accumulator>(world);
 
-    benchmark<262144, dumb_reduce, parallel_accumulator>(world);
+    benchmark<262144, dumb_reduce, SIMD_accumulator>(world);
     benchmark<262144, smarter_reduce, SIMD_accumulator>(world);
     benchmark<262144, MPI_reduce, SIMD_accumulator>(world);
 
     benchmark<4194304, dumb_reduce, parallel_accumulator>(world);
     benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
-    benchmark<4194304, MPI_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, MPI_reduce, parallel_accumulator>(world);
     return 0;
 }

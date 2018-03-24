@@ -2,7 +2,7 @@
 #include <chrono>
 #include <numeric>
 #include <valarray>
-#include <omp.h>
+//#include <omp.h>
 
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
@@ -75,12 +75,12 @@ struct dumb_reduce {
 
     template<typename T, typename Op>
     void operator()(const boost::mpi::communicator &comm, T *__restrict__ in_values, T * __restrict__ out_values, Op op, int root) {
-        if (unlikely(comm.rank() == root)) {
+        if (comm.rank() == root) {
+            std::memcpy(out_values, in_values, Size * sizeof(T));
             for (int j = 0; j < comm.size() - 1; ++j) {
                 comm.recv(boost::mpi::any_source, boost::mpi::any_tag, responses.data(), Size);
-                std::transform(in_values, in_values + Size, responses.data(), in_values, op);
+                std::transform(out_values, out_values + Size, responses.data(), out_values, op);
             }
-            std::memcpy(out_values, in_values, Size);
         }
         else { comm.send(root, 0, in_values, Size); }
     }
@@ -124,10 +124,18 @@ struct smarter_reduce : public dumb_reduce<Size> {
                                                    T * __restrict__ out_values, Op op, int root)  {
         /// If the arrays are smaller than the a standard MTU, there is no practical advantages paying the overhead
         /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
-        if (Size > 1024)
+        if (Size > 64)
+        {
+            if (comm.rank() == 0)
+            std::cout << "impl" << std::endl;
             impl(comm, in_values, out_values, op, root);
+        }
         else
+        {
+            if (comm.rank() == 0)
+            std::cout << "fallback" << std::endl;
             dumb_reduce<Size>::operator()(comm, in_values, out_values, op, root);
+        }
     }
 };
 
@@ -207,7 +215,7 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-/*    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
+    benchmark<4, dumb_reduce, SIMD_accumulator>(world);
     benchmark<4, smarter_reduce, SIMD_accumulator>(world);
     benchmark<4, MPI_reduce, SIMD_accumulator>(world);
 
@@ -229,11 +237,7 @@ int main(int argc, char *argv[]) {
 
     benchmark<4194304, dumb_reduce, parallel_accumulator>(world);
     benchmark<4194304, smarter_reduce, parallel_accumulator>(world);
-    benchmark<4194304, MPI_reduce, parallel_accumulator>(world);*/
-
-    benchmark<1024, dumb_reduce, SIMD_accumulator>(world);
-    benchmark<1024, smarter_reduce, SIMD_accumulator>(world);
-    benchmark<1024, MPI_reduce, SIMD_accumulator>(world);
+    benchmark<4194304, MPI_reduce, parallel_accumulator>(world);
 
     return 0;
 }

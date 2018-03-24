@@ -216,7 +216,7 @@ auto make_stat(Function &&function) {
 /// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 int benchmark(boost::mpi::communicator const &comm) {
-    struct result results = make_stat<10>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+    struct result results = make_stat<500>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
     if (comm.rank() > 0) { return 0; }
     std::cout << std::setw(10) << std::left  << Size << std::setw(10) << std::right << results.reduction.min
               << std::setw(10) << std::right << results.reduction.max << std::setw(10) << std::right << results.reduction.avg
@@ -229,7 +229,7 @@ template<template<size_t> class Reducer, typename Accumulator, size_t ...Size>
 void unroll_benchmark(boost::mpi::communicator const &comm) {
     using expander = int[];
     if (comm.rank() == 0) {
-        std::cout << "Testing using " << Reducer<0>::name << " and " << Accumulator::name << " [" << 10 << " rounds]:\n";
+        std::cout << "Testing using " << Reducer<0>::name << " and " << Accumulator::name << " [" << 500 << " rounds]:\n";
         std::cout << std::setw(10) << std::left  << "Data size" << std::setw(10) << std::right << "Red. min"
                   << std::setw(10) << std::right << "Red. max" << std::setw(10) << std::right << "Red. avr"
                   << std::setw(10) << std::right << "Acc. min" << std::setw(10) << std::right << "Acc. max"

@@ -261,6 +261,8 @@ int main(int argc, char *argv[]) {
     //unroll_benchmark<dumb_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
     //unroll_benchmark<smarter_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
 
+    unroll_benchmark<MPI_reduce, parallel_accumulator, 4194304>(world);
+
     unroll_benchmark<MPI_reduce, dumb_accumulator, 4194304>(world);
     unroll_benchmark<MPI_reduce, SIMD_accumulator, 4194304>(world);
     unroll_benchmark<MPI_reduce, parallel_accumulator, 4194304>(world);

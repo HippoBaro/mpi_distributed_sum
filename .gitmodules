@@ -1,3 +1,0 @@
-[submodule "boost.simd"]
-	path = boost.simd
-	url = https://github.com/AlexEslikov/boost.simd.git

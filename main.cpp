@@ -2,28 +2,32 @@
 #include <chrono>
 #include <numeric>
 #include <valarray>
-//#include <omp.h>
+#include <iomanip>
 
+// On GCC 4.9, boost::mpi has warnings and -Werror prevents compilation
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-local-typedefs"
 #pragma GCC diagnostic ignored "-Wunused-parameter"
-
 #include <boost/mpi.hpp>
-#include <future>
-#include <iomanip>
-
 #pragma GCC diagnostic pop
 
 #define likely(x) __builtin_expect ((x), 1)
 #define unlikely(x) __builtin_expect ((x), 0)
 
+/*
+ * MPI sum.
+ * Reduce an array scattered throughout multiple machines using MPI_Reduce and
+ * then compute the sum of the reduced array
+ */
+
 /// Simple SIMDed accumulator, reduce an array to a single value using std::plus<>
 struct SIMD_accumulator {
     static constexpr auto name = "SIMD_accumulator";
 
-    template<typename T>
-    __attribute__((always_inline)) auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
-        return std::accumulate(first, last, init);
+    template<typename T, typename BinaryOperation>
+    __attribute__((always_inline)) auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init,
+                                                   BinaryOperation op) {
+        return std::accumulate(first, last, init, op);
     }
 };
 
@@ -31,10 +35,10 @@ struct SIMD_accumulator {
 struct dumb_accumulator {
     static constexpr auto name = "dumb_accumulator";
 
-    template<typename T>
-    auto operator()(T const *first, T const *last, T init) {
+    template<typename T, typename BinaryOperation>
+    auto operator()(T const *first, T const *last, T init, BinaryOperation op) {
         volatile T res = init;
-        while (first != last) { res += *first++; }
+        while (first != last) { res = op(res, *first++); }
         return res;
     }
 };
@@ -43,12 +47,12 @@ struct dumb_accumulator {
 struct parallel_accumulator {
     static constexpr auto name = "parallel_accumulator";
 
-    template<typename T>
-    auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init) {
+    template<typename T, typename BinaryOperation>
+    auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init, BinaryOperation op) {
         T res = init;
         #pragma omp parallel for reduction (+:res) schedule(static)
         for (int j = 0; j < std::distance(first, last); ++j) {
-            res += first[j];
+            res = op(res, first[j]);
         }
         return res;
     }
@@ -92,6 +96,10 @@ struct dumb_reduce {
 constexpr std::array<int, 9> log2_a{ {-1, 0, 1, -1, 2, -1, -1, -1, 3} };
 
 /// Smarter reducer implementing a binomial-tree
+/// A  AB   ABCD
+/// B /    /
+/// C  CD /
+/// D /
 /// \tparam Size Size of the arrays to reduce
 template<size_t Size>
 struct smarter_reduce : public dumb_reduce<Size> {
@@ -127,7 +135,7 @@ struct smarter_reduce : public dumb_reduce<Size> {
                                                    T * __restrict__ out_values, Op op, int root)  {
         /// If the arrays are smaller than the standard MTU, there is no practical advantages paying the overhead
         /// of reducing via a binomial-tree, so we fallback to the dumb_reducer to improve latency.
-        if (Size > 1024) { impl(comm, in_values, out_values, op, root); }
+        if (Size > 1500) { impl(comm, in_values, out_values, op, root); }
         else { dumb_reduce<Size>::operator()(comm, in_values, out_values, op, root); }
     }
 };
@@ -135,7 +143,7 @@ struct smarter_reduce : public dumb_reduce<Size> {
 /// Utility function to time the execution of a function using the most precise clock available on the system
 /// \tparam Function The function's type
 /// \param func the callable object
-/// \return a a std::chrono duration casted as microsoconds.
+/// \return a std::chrono duration casted as microsoconds.
 template<typename Function>
 inline std::chrono::microseconds time_function(Function &&func) {
     auto begin_time = std::chrono::high_resolution_clock::now();
@@ -160,15 +168,15 @@ auto reduce_and_accumulate(boost::mpi::communicator const &comm, Reducer reducer
     srand(1);  // useful for testing the results of the final accumulations accros Reducers and Accumulators
     std::generate(local.begin(), local.begin() + Size, [] { return rand(); });
 
-    comm.barrier();
+    comm.barrier(); // This barraiers ensures that all nodes are synchronized.
     auto reduce_time = time_function([&] { reducer(comm, &local.front(), &reduced.front(), std::plus<>(), 0); });
     if (likely (comm.rank() > 0)) { return std::make_tuple(0, 0, 0); }
-    int res;
+    int accumulation_result;
     auto accumulate_time = time_function([&] {
-        res = accumulator(reduced.data(), reduced.data() + Size, 0);
+        accumulation_result = accumulator(reduced.data(), reduced.data() + Size, 0, std::plus<>());
     });
 
-    return std::make_tuple((int)reduce_time.count(), (int)accumulate_time.count(), res);
+    return std::make_tuple((int)reduce_time.count(), (int)accumulate_time.count(), accumulation_result);
 }
 
 struct result {
@@ -216,7 +224,7 @@ auto make_stat(Function &&function) {
 /// \param comm Communicator to benchmark on
 template<size_t Size, template<size_t> class Reducer, typename Accumulator>
 int benchmark(boost::mpi::communicator const &comm) {
-    struct result results = make_stat<10000>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
+    struct result results = make_stat<100>([&comm] { return reduce_and_accumulate<Size>(comm, Reducer<Size>(), Accumulator()); });
     if (comm.rank() > 0) { return 0; }
     std::cout << std::setw(10) << std::left  << Size << std::setw(10) << std::right << results.reduction.min
               << std::setw(10) << std::right << results.reduction.max << std::setw(10) << std::right << results.reduction.avg
@@ -225,11 +233,16 @@ int benchmark(boost::mpi::communicator const &comm) {
     return 0;
 }
 
+/// Expand/Unroll the variadic Size template parametter and launch benchmarks for each of the specified array size
+/// \tparam Reducer Reducing policy
+/// \tparam Accumulator Accumulating policy
+/// \tparam Size Sizes of the arrays to work with
+/// \param comm Communicator to benchmark on
 template<template<size_t> class Reducer, typename Accumulator, size_t ...Size>
 void unroll_benchmark(boost::mpi::communicator const &comm) {
     using expander = int[];
     if (comm.rank() == 0) {
-        std::cout << "Testing using " << Reducer<0>::name << " and " << Accumulator::name << " [" << 10000 << " rounds]:\n";
+        std::cout << "Testing using " << Reducer<0>::name << " and " << Accumulator::name << " [" << 100 << " rounds]:\n";
         std::cout << std::setw(10) << std::left  << "Data size" << std::setw(10) << std::right << "Red. min"
                   << std::setw(10) << std::right << "Red. max" << std::setw(10) << std::right << "Red. avr"
                   << std::setw(10) << std::right << "Acc. min" << std::setw(10) << std::right << "Acc. max"

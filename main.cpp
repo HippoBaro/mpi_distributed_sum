@@ -20,17 +20,6 @@
  * then compute the sum of the reduced array
  */
 
-/// Simple SIMDed accumulator, reduce an array to a single value using std::plus<>
-struct SIMD_accumulator {
-    static constexpr auto name = "SIMD_accumulator";
-
-    template<typename T, typename BinaryOperation>
-    __attribute__((always_inline)) auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init,
-                                                   BinaryOperation op) {
-        return std::accumulate(first, last, init, op);
-    }
-};
-
 /// Simple, non-optimized linear accumulator, reduce an array to a single value using std::plus<>
 struct dumb_accumulator {
     static constexpr auto name = "dumb_accumulator";
@@ -40,6 +29,17 @@ struct dumb_accumulator {
         volatile T res = init;
         while (first != last) { res = op(res, *first++); }
         return res;
+    }
+};
+
+/// Simple SIMDed accumulator, reduce an array to a single value using std::plus<>
+struct SIMD_accumulator {
+    static constexpr auto name = "SIMD_accumulator";
+
+    template<typename T, typename BinaryOperation>
+    __attribute__((always_inline)) auto operator()(T const * __restrict__ first, T const * __restrict__ last, T init,
+                                                   BinaryOperation op) {
+        return std::accumulate(first, last, init, op);
     }
 };
 
@@ -257,8 +257,12 @@ int main(int argc, char *argv[]) {
     boost::mpi::environment env{argc, argv};
     boost::mpi::communicator world;
 
-    unroll_benchmark<MPI_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
-    unroll_benchmark<dumb_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
-    unroll_benchmark<smarter_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+    //unroll_benchmark<MPI_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+    //unroll_benchmark<dumb_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+    //unroll_benchmark<smarter_reduce, SIMD_accumulator, 4, 64, 1024, 16384, 262144, 4194304>(world);
+
+    unroll_benchmark<MPI_reduce, dumb_accumulator, 4194304>(world);
+    unroll_benchmark<MPI_reduce, SIMD_accumulator, 4194304>(world);
+    unroll_benchmark<MPI_reduce, parallel_accumulator, 4194304>(world);
     return EXIT_SUCCESS;
 }
